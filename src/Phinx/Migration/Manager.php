@@ -138,7 +138,7 @@ class Manager
      */
     public function migrate($environment, $version = null)
     {
-        $migrations = $this->getMigrations();
+        $migrations = $this->getMigrations($environment);
         $env = $this->getEnvironment($environment);
         $versions = $env->getVersions();
         $current = $env->getCurrentVersion();
@@ -227,7 +227,7 @@ class Manager
      */
     public function rollback($environment, $version = null)
     {
-        $migrations = $this->getMigrations();
+        $migrations = $this->getMigrations($environment);
         $env = $this->getEnvironment($environment);
         $versions = $env->getVersions();
 
@@ -355,12 +355,18 @@ class Manager
      * @throws \InvalidArgumentException
      * @return AbstractMigration[]
      */
-    public function getMigrations()
+    public function getMigrations($environment = null)
     {
         if (null === $this->migrations) {
             $config = $this->getConfig();
+            $options = $this->getEnvironment($environment)->getOptions();
             $phpFiles = glob($config->getMigrationPath() . DIRECTORY_SEPARATOR . '*.php');
-            
+            // merge the files from the selected module
+            if (isset($options['module'])) {
+                $module = $options['module'];
+                $phpFiles = $this->mergeModuleMigrations($phpFiles, $config->getMigrationPath(), $module);
+            }
+
             // filter the files to only get the ones that match our naming scheme
             $fileNames = array();
             /** @var AbstractMigration[] $versions */
@@ -427,7 +433,22 @@ class Manager
         
         return $this->migrations;
     }
-    
+
+    protected function mergeModuleMigrations($phpFiles, $migrationPath, $module)
+    {
+        $phpFiles = array_merge(
+            $phpFiles,
+            glob($migrationPath . DIRECTORY_SEPARATOR . $module . DIRECTORY_SEPARATOR . '*.php')
+        );
+        $phpFilesMapped = [];
+        array_walk($phpFiles, function($val) use (&$phpFilesMapped) {
+                $phpFilesMapped[basename($val)] = $val;
+            });
+        ksort($phpFilesMapped);
+
+        return array_values($phpFilesMapped);
+    }
+
     /**
      * Sets the config.
      *
